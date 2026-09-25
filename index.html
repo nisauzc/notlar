@@ -69,6 +69,12 @@ textarea#text{width:100%;min-height:45vh;border:none;background:transparent;resi
   font-size:18px;line-height:1.65;padding:4px 0}
 textarea#text:focus{outline:none}
 .body{font-family:var(--serif);font-size:18px;line-height:1.7;white-space:pre-wrap;word-wrap:break-word}
+.body .li{padding-left:1.4em;text-indent:-1.4em}
+.body .chk{display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:2px 0}
+.body .chk input{width:20px;height:20px;margin-top:5px;flex:none;accent-color:var(--accent)}
+.body .chk.done span{text-decoration:line-through;color:var(--muted)}
+.tool{min-width:44px;padding:8px 10px;font-weight:600}
+#scr-edit{padding-bottom:8px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-size:13px;max-width:100%}
 .chip a{color:inherit}
 .chip button{border:none;background:none;cursor:pointer;color:var(--muted);padding:0 2px;font-size:16px}
@@ -143,7 +149,7 @@ textarea#text:focus{outline:none}
 
 <!-- ===== OKUMA ===== -->
 <section id="scr-view" class="hidden">
-  <div class="top row"><button class="btn ghost" data-back>← Geri</button><span class="spacer"></span><button class="btn" id="btn-edit">Düzenle</button></div>
+  <div class="top row"><button class="btn ghost" data-back>← Geri</button><span class="spacer"></span><button class="btn ghost danger" id="btn-vdel">Sil</button><button class="btn" id="btn-edit">Düzenle</button></div>
   <div class="stack" style="margin-top:16px">
     <div class="muted" id="v-date"></div>
     <div id="v-place"></div>
@@ -154,7 +160,7 @@ textarea#text:focus{outline:none}
 
 <!-- ===== YAZMA ===== -->
 <section id="scr-edit" class="hidden">
-  <div class="top row"><button class="btn ghost" id="btn-cancel">Vazgeç</button><span class="spacer"></span><span class="small muted" id="draft-st"></span></div>
+  <div class="top row"><button class="btn ghost" id="btn-cancel">Vazgeç</button><span class="spacer"></span><span class="small muted" id="draft-st"></span><button class="btn ghost danger" id="btn-del">Sil</button></div>
   <div class="stack" style="margin-top:12px">
     <input id="e-date" type="datetime-local" aria-label="Tarih ve saat">
     <textarea id="text" placeholder="Bugün aklında ne var?" aria-label="Yazı"></textarea>
@@ -162,10 +168,12 @@ textarea#text:focus{outline:none}
     <div class="thumbs" id="e-photos"></div>
   </div>
   <div class="bar row">
-    <button class="btn" id="btn-loc">📍 Konum</button>
-    <button class="btn" id="btn-photo">🖼 Fotoğraf</button>
+    <button class="btn tool" data-list="check" title="Yapılacaklar listesi" aria-label="Yapılacaklar listesi">☐</button>
+    <button class="btn tool" data-list="num" title="Numaralı liste" aria-label="Numaralı liste">1.</button>
+    <button class="btn tool" data-list="bullet" title="Madde işaretli liste" aria-label="Madde işaretli liste">•</button>
+    <button class="btn tool" id="btn-loc" title="Konum ekle" aria-label="Konum ekle">📍</button>
+    <button class="btn tool" id="btn-photo" title="Fotoğraf ekle" aria-label="Fotoğraf ekle">🖼</button>
     <span class="spacer"></span>
-    <button class="btn danger" id="btn-del">Sil</button>
     <button class="btn primary" id="btn-save">Kaydet</button>
   </div>
 </section>
@@ -398,10 +406,34 @@ async function openView(id) {
   const e = ENTRIES.get(id); if (!e) return; current = id;
   $('#v-date').textContent = fmtLong(e.date);
   $('#v-place').replaceChildren(e.place ? placeChip(e.place) : '');
-  $('#v-text').textContent = e.text;
+  renderBody(e);
   const ph = $('#v-photos'); ph.replaceChildren();
   show('view');
   for (const pid of e.photos || []) { const u = await photoURL(pid); if (u) ph.append(el('img', { src: u, alt: '' })); else ph.append(el('p', { className: 'small muted', textContent: '(fotoğraf bu cihazda yok — yedekten gelecek)' })); }
+}
+/* Okuma ekranında yazıyı satır satır çiz: ☐/☑ satırları dokunulabilir kutucuk olur */
+function renderBody(e) {
+  const box = $('#v-text'); box.replaceChildren();
+  e.text.split('\n').forEach((line, i) => {
+    const m = /^([☐☑]) ?(.*)$/.exec(line);
+    if (m) {
+      const cb = el('input', { type: 'checkbox', checked: m[1] === '☑' });
+      const row = el('label', { className: 'chk' + (cb.checked ? ' done' : '') }, cb, el('span', { textContent: m[2] }));
+      cb.onchange = () => toggleInView(e.id, i, cb.checked);
+      box.append(row);
+    } else box.append(el('div', { className: /^(• |\d+\. )/.test(line) ? 'li' : '', textContent: line || '\u200b' }));
+  });
+}
+async function toggleInView(id, i, on) {
+  const e = ENTRIES.get(id); if (!e) return;
+  const lines = e.text.split('\n'); lines[i] = (on ? '☑ ' : '☐ ') + lines[i].replace(/^[☐☑] ?/, '');
+  e.text = lines.join('\n'); await persistEntry(e); renderBody(e);
+}
+async function persistEntry(entry) {
+  entry.updated = Date.now();
+  await dbPut('entries', { id: entry.id, updated: entry.updated, deleted: false, ...(await encJSON(entry)), synced: false });
+  ENTRIES.set(entry.id, entry); updateStatus();
+  if (tokenValid()) syncDrive().catch(() => {});
 }
 document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => { renderList(); show('list'); updateStatus(); });
 $('#btn-edit').onclick = () => { const e = ENTRIES.get(current); openEditor({ id: e.id, isNew: false, date: e.date, created: e.created, text: e.text, place: e.place || null, photos: [...(e.photos || [])], added: [] }); };
@@ -417,8 +449,56 @@ async function openEditor(st, restored = false) {
   show('edit'); autoGrow();
   if (st.isNew && !restored) setTimeout(() => $('#text').focus(), 60);
 }
-function autoGrow() { const t = $('#text'); t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight, innerHeight * 0.45) + 'px'; }
-$('#text').addEventListener('input', () => { editing.text = $('#text').value; autoGrow(); saveDraftSoon(); });
+/* Yazı alanı içeriğe göre uzar. Sayfa kaydırma konumu korunur, imleç sondaysa alttaki çubuğun üstünde görünür kalır. */
+function autoGrow() {
+  const t = $('#text'), y = window.scrollY, minH = innerHeight * 0.45;
+  t.style.height = 'auto'; const h = Math.max(t.scrollHeight, minH); t.style.height = h + 'px';
+  window.scrollTo(0, y);
+  if (document.activeElement !== t || t.scrollHeight < minH) return;
+  if (t.value.indexOf('\n', t.selectionEnd) !== -1) return;           // imleç son satırda değilse karışma
+  const vh = window.visualViewport ? window.visualViewport.height : innerHeight;
+  const limit = vh - $('#scr-edit .bar').getBoundingClientRect().height - 12;
+  const bottom = t.getBoundingClientRect().bottom;
+  if (bottom > limit) window.scrollBy(0, bottom - limit);
+}
+if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (screen === 'edit') autoGrow(); });
+
+/* Listeler: ☐ yapılacaklar, 1. numaralı, • madde. Düz metin olarak saklanır. */
+const LIST_RE = /^([☐☑] |• |\d+\. )/;
+function textChanged() { editing.text = $('#text').value; autoGrow(); saveDraftSoon(); }
+function applyList(kind) {
+  const t = $('#text'), v = t.value, s = t.selectionStart, e = t.selectionEnd;
+  const ls = v.lastIndexOf('\n', s - 1) + 1; let le = v.indexOf('\n', e); if (le < 0) le = v.length;
+  const lines = v.slice(ls, le).split('\n');
+  const isKind = l => kind === 'check' ? /^[☐☑] /.test(l) : kind === 'bullet' ? l.startsWith('• ') : /^\d+\. /.test(l);
+  const off = lines.every(isKind);
+  let start = 1;
+  if (kind === 'num' && ls > 0) { const pl = v.slice(v.lastIndexOf('\n', ls - 2) + 1, ls - 1), m = /^(\d+)\. /.exec(pl); if (m) start = +m[1] + 1; }
+  const out = lines.map((l, i) => { const bare = l.replace(LIST_RE, ''); return off ? bare : (kind === 'check' ? '☐ ' : kind === 'bullet' ? '• ' : (start + i) + '. ') + bare; }).join('\n');
+  t.focus(); t.setRangeText(out, ls, le, 'end'); textChanged();
+}
+document.querySelectorAll('[data-list]').forEach(b => {
+  b.addEventListener('mousedown', ev => ev.preventDefault());   // klavye kapanmasın
+  b.addEventListener('click', () => applyList(b.dataset.list));
+});
+/* Enter'a basınca listeyi sürdür; boş maddede Enter listeyi bitirir */
+function continueList(ev) {
+  if (!ev.inputType || !/^insert(LineBreak|Paragraph|Text|CompositionText)$/.test(ev.inputType)) return;
+  const t = $('#text'), pos = t.selectionStart, v = t.value;
+  if (pos !== t.selectionEnd || v[pos - 1] !== '\n') return;
+  const ps = v.lastIndexOf('\n', pos - 2) + 1, prev = v.slice(ps, pos - 1);
+  const m = /^([☐☑] |• |(\d+)\. )(.*)$/.exec(prev); if (!m) return;
+  if (!m[3].trim()) t.setRangeText('', ps, pos, 'end');
+  else t.setRangeText(m[2] ? (+m[2] + 1) + '. ' : (m[1] === '☑ ' ? '☐ ' : m[1]), pos, pos, 'end');
+}
+$('#text').addEventListener('input', ev => { continueList(ev); textChanged(); });
+/* Yazarken kutucuğa dokununca işaretle/kaldır */
+$('#text').addEventListener('click', () => {
+  const t = $('#text'), v = t.value, p = t.selectionStart; if (p !== t.selectionEnd) return;
+  const ls = v.lastIndexOf('\n', p - 1) + 1;
+  if (p - ls > 1 || !/^[☐☑] /.test(v.slice(ls, ls + 2))) return;
+  t.setRangeText(v[ls] === '☐' ? '☑' : '☐', ls, ls + 1, 'preserve'); t.setSelectionRange(ls + 2, ls + 2); textChanged();
+});
 $('#e-date').addEventListener('change', () => { editing.date = $('#e-date').value || editing.date; saveDraftSoon(); });
 
 /* Taslak: yazarken her şey şifreli olarak cihaza kaydedilir, sekme kapansa bile kaybolmaz */
@@ -507,16 +587,17 @@ $('#btn-cancel').onclick = async () => {
   editing = null; await kvDel('draft');
   if (!wasNew && ENTRIES.has(id)) openView(id); else { renderList(); show('list'); }
 };
-$('#btn-del').onclick = async () => {
-  if (!editing || editing.isNew) return;
+async function deleteEntry(id, extraPhotos = []) {
   if (!confirm('Bu yazı silinsin mi? Geri alınamaz.')) return;
-  const e = ENTRIES.get(editing.id);
-  await dbPut('entries', { id: editing.id, updated: Date.now(), deleted: true, synced: false });
-  for (const pid of new Set([...(e?.photos || []), ...editing.added])) await dbDel('photos', pid);
-  ENTRIES.delete(editing.id); editing = null; await kvDel('draft');
+  const e = ENTRIES.get(id);
+  await dbPut('entries', { id, updated: Date.now(), deleted: true, synced: false });
+  for (const pid of new Set([...(e?.photos || []), ...extraPhotos])) await dbDel('photos', pid);
+  ENTRIES.delete(id); editing = null; current = null; await kvDel('draft');
   renderList(); show('list'); updateStatus(); toast('Silindi.');
   if (tokenValid()) syncDrive().catch(() => {});
-};
+}
+$('#btn-del').onclick = () => { if (editing && !editing.isNew) deleteEntry(editing.id, editing.added); };
+$('#btn-vdel').onclick = () => { if (current) deleteEntry(current); };
 
 /* ---------- Durum satırı ve hatırlatma ---------- */
 async function pendingCount() { return (await dbAll('entries')).filter(r => !r.synced).length; }
