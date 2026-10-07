@@ -358,12 +358,13 @@ function lock() {
 $('#btn-lock').onclick = lock;
 
 /* Otomatik kilit */
-let lastActive = Date.now(), hiddenAt = 0;
+let lastActive = Date.now(), hiddenAt = 0, picking = false;  // picking: galeri/kamera açıkken kilitleme
 ['pointerdown', 'keydown', 'input', 'scroll'].forEach(ev => addEventListener(ev, () => lastActive = Date.now(), { passive: true, capture: true }));
-setInterval(() => { if (KEY && Date.now() - lastActive > LOCK_IDLE_MS) lock(); }, 30e3);
+setInterval(() => { if (KEY && !picking && Date.now() - lastActive > LOCK_IDLE_MS) lock(); }, 30e3);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); if (screen === 'edit') saveDraftNow(); }
-  else if (KEY && hiddenAt && Date.now() - hiddenAt > LOCK_HIDDEN_MS) lock();
+  else if (KEY && hiddenAt && Date.now() - hiddenAt > LOCK_HIDDEN_MS && !picking) lock();
+  else lastActive = Date.now();
 });
 
 /* ---------- Liste ---------- */
@@ -390,10 +391,15 @@ function renderList() {
 }
 
 /* ---------- Okuma ---------- */
+function photoImg(u) {
+  const img = el('img', { src: u, alt: '' });
+  img.onerror = () => img.replaceWith(el('p', { className: 'small muted', textContent: '(Bu fotoğrafın biçimi bu cihazda gösterilemiyor ama kayıtlı ve yedekte duruyor.)' }));
+  return img;
+}
 async function photoURL(id) {
   if (photoURLs.has(id)) return photoURLs.get(id);
   const r = await dbGet('photos', id); if (!r) return null;
-  const u = URL.createObjectURL(new Blob([await decBytes(r)], { type: 'image/jpeg' }));
+  const u = URL.createObjectURL(new Blob([await decBytes(r)], { type: r.type || 'image/jpeg' }));
   photoURLs.set(id, u); return u;
 }
 function placeChip(p, onRemove) {
@@ -409,7 +415,7 @@ async function openView(id) {
   renderBody(e);
   const ph = $('#v-photos'); ph.replaceChildren();
   show('view');
-  for (const pid of e.photos || []) { const u = await photoURL(pid); if (u) ph.append(el('img', { src: u, alt: '' })); else ph.append(el('p', { className: 'small muted', textContent: '(fotoğraf bu cihazda yok — yedekten gelecek)' })); }
+  for (const pid of e.photos || []) { const u = await photoURL(pid); if (u) ph.append(photoImg(u)); else ph.append(el('p', { className: 'small muted', textContent: '(fotoğraf bu cihazda yok — yedekten gelecek)' })); }
 }
 /* Okuma ekranında yazıyı satır satır çiz: ☐/☑ satırları dokunulabilir kutucuk olur */
 function renderBody(e) {
@@ -513,7 +519,7 @@ async function renderThumbs() {
     const u = await photoURL(pid);
     const x = el('button', { textContent: '×', title: 'Fotoğrafı çıkar' });
     x.onclick = () => { editing.photos = editing.photos.filter(p => p !== pid); renderThumbs(); saveDraftSoon(); };
-    box.append(el('div', { className: 'thumb' }, u ? el('img', { src: u, alt: '' }) : null, x));
+    box.append(el('div', { className: 'thumb' }, u ? photoImg(u) : null, x));
   }
 }
 
@@ -536,31 +542,52 @@ async function placeName(lat, lon) {
   } catch { return ''; }
 }
 
-$('#btn-photo').onclick = () => $('#file-photo').click();
+$('#btn-photo').onclick = () => { picking = true; setTimeout(() => picking = false, 15 * 60e3); $('#file-photo').click(); };
 $('#file-photo').onchange = async ev => {
-  const files = [...ev.target.files]; ev.target.value = '';
+  const files = [...ev.target.files]; ev.target.value = ''; picking = false; lastActive = Date.now();
+  if (!KEY || !editing) { if (files.length) toast('Defter kilitlenmişti. Açtıktan sonra fotoğrafı tekrar ekle.', 4000); return; }
+  let ok = 0;
   for (const f of files) {
+    let bytes, type = 'image/jpeg';
+    try { bytes = await compressImage(f); }
+    catch (e) {
+      // Küçültülemeyen biçim (ör. HEIC) ya da çok büyük fotoğraf: orijinalini sakla, kaybolmasın
+      if (f.size > 25 * 1048576) { toast(`"${f.name}" çok büyük (${(f.size / 1048576).toFixed(0)} MB), eklenemedi.`, 5000); continue; }
+      try { bytes = new Uint8Array(await f.arrayBuffer()); type = f.type || 'application/octet-stream'; }
+      catch { toast(`"${f.name}" okunamadı.`, 5000); continue; }
+    }
     try {
-      const bytes = await compressImage(f);
       const id = 'p-' + uid();
-      await dbPut('photos', { id, ...(await encBytes(bytes)), synced: false });
-      editing.photos.push(id); editing.added.push(id);
-    } catch (e) { toast('Bir fotoğraf eklenemedi.'); }
+      const rec = { id, ...(await encBytes(bytes)), synced: false }; if (type !== 'image/jpeg') rec.type = type;
+      await dbPut('photos', rec);
+      editing.photos.push(id); editing.added.push(id); ok++;
+    } catch (e) {
+      toast(e && e.name === 'QuotaExceededError' ? 'Cihazda yer kalmadı, fotoğraf kaydedilemedi.' : 'Fotoğraf kaydedilemedi (' + ((e && (e.name || e.message)) || 'bilinmeyen hata') + ').', 6000);
+    }
   }
+  if (ok) toast(ok === 1 ? 'Fotoğraf eklendi.' : ok + ' fotoğraf eklendi.');
   await renderThumbs(); saveDraftNow();
 };
-function compressImage(file, max = 1600, q = 0.82) {
-  return new Promise((res, rej) => {
+function decodeImage(file) {
+  const viaImg = () => new Promise((res, rej) => {
     const url = URL.createObjectURL(file), img = new Image();
-    img.onload = () => {
-      const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-      const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-      c.toBlob(async b => b ? res(new Uint8Array(await b.arrayBuffer())) : rej(new Error('blob')), 'image/jpeg', q);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('img')); };
+    img.onload = () => { res(img); setTimeout(() => URL.revokeObjectURL(url), 2000); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
     img.src = url;
   });
+  if (!window.createImageBitmap) return viaImg();
+  return createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => viaImg());
+}
+async function compressImage(file, max = 1600, q = 0.82) {
+  const src = await decodeImage(file);
+  const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height;
+  if (!w || !h) throw new Error('size');
+  const sc = Math.min(1, max / Math.max(w, h));
+  const c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); if (src.close) src.close();
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', q));
+  if (!blob || blob.size < 100) throw new Error('blob');
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 $('#btn-save').onclick = async () => {
