@@ -89,6 +89,28 @@ textarea#text:focus{outline:none}
 .fab{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));border-radius:999px;padding:14px 20px;
   box-shadow:0 4px 18px rgba(0,0,0,.18);z-index:6}
 .set h3{font-family:var(--serif);font-weight:500;margin:0 0 6px}
+.tabs{display:flex;gap:6px;margin-top:8px}
+.tabs button{flex:1;padding:9px;border:1px solid var(--line);background:var(--paper);border-radius:10px;cursor:pointer;font-size:15px;color:var(--muted)}
+.tabs button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.lcard{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer}
+.lcard .ic{font-size:26px}
+.lcard .nm{font-family:var(--serif);font-size:18px}
+.lcard .ct{font-size:13px;color:var(--muted)}
+.irow{display:flex;gap:12px;align-items:flex-start;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:6px}
+.irow input[type=checkbox]{width:22px;height:22px;margin-top:2px;flex:none;accent-color:var(--accent)}
+.irow .tx{flex:1;cursor:pointer;min-width:0}
+.irow .tt{font-size:16px;word-wrap:break-word}
+.irow .mt{font-size:12px;color:var(--muted);margin-top:2px}
+.irow.done .tt{text-decoration:line-through;color:var(--muted)}
+.late{color:var(--err)}
+details.donewrap summary{cursor:pointer;color:var(--muted);margin:16px 0 8px;font-size:14px}
+select,textarea.plain{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:16px;color:var(--ink);font-family:inherit}
+input[type=date]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:16px;color:var(--ink)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.big{font-family:var(--serif);font-size:30px;line-height:1.1}
+.stl{margin:8px 0 0;padding:0;list-style:none;font-size:14px}
+.stl li{padding:5px 0;border-top:1px solid var(--line);display:flex;gap:10px}
+.stl li .d{color:var(--muted);flex:none;width:72px}
 .lockicon{font-size:40px;text-align:center}
 </style>
 </head>
@@ -139,6 +161,7 @@ textarea#text:focus{outline:none}
       <button class="btn ghost" id="btn-lock" aria-label="Kilitle">Kilitle</button>
     </div>
     <div class="status" id="status"><span class="dot"></span><span></span></div>
+    <div class="tabs"><button data-tab="diary" class="on">Günlük</button><button data-tab="lists">Listeler</button></div>
   </div>
   <div id="banner"></div>
   <div style="margin-top:12px"><input id="search" type="search" placeholder="Yazılarda ara…" aria-label="Ara"></div>
@@ -207,6 +230,52 @@ textarea#text:focus{outline:none}
       <h3>Bu cihaz</h3>
       <p class="small muted" id="dev-info" style="margin:0"></p>
     </div>
+  </div>
+</section>
+
+<!-- ===== LİSTELER ===== -->
+<section id="scr-lists" class="hidden">
+  <div class="top">
+    <div class="row"><span class="title">Defter</span><span class="spacer"></span>
+      <button class="btn ghost" id="btn-settings2">Ayarlar</button><button class="btn ghost" id="btn-lock2">Kilitle</button></div>
+    <div class="tabs"><button data-tab="diary">Günlük</button><button data-tab="lists" class="on">Listeler</button></div>
+  </div>
+  <div id="lists-box" class="stack" style="margin-top:14px"></div>
+  <div class="row" style="margin-top:14px"><button class="btn" id="btn-newlist">+ Yeni liste</button><span class="spacer"></span><button class="btn primary" id="btn-stats">📊 Özet</button></div>
+</section>
+
+<section id="scr-listview" class="hidden">
+  <div class="top row"><button class="btn ghost" id="lv-back">← Listeler</button><span class="spacer"></span><button class="btn ghost" id="lv-edit">Listeyi düzenle</button></div>
+  <h1 id="lv-title"></h1>
+  <form id="lv-add" class="row" style="flex-wrap:nowrap;margin:8px 0 14px"><input id="lv-input" type="text" placeholder="Yeni madde ekle…" autocomplete="off" style="flex:1"><button class="btn primary" type="submit">Ekle</button></form>
+  <div id="lv-open"></div>
+  <details class="donewrap" id="lv-donewrap"><summary id="lv-donesum"></summary><div id="lv-done"></div></details>
+</section>
+
+<section id="scr-item" class="hidden">
+  <div class="top row"><button class="btn ghost" id="it-cancel">Vazgeç</button><span class="spacer"></span><button class="btn ghost danger" id="it-del">Sil</button><button class="btn primary" id="it-save">Kaydet</button></div>
+  <div class="stack" style="margin-top:12px">
+    <div><label class="f" for="it-title">Madde</label><input id="it-title" type="text"></div>
+    <div><label class="f" for="it-note">Not (isteğe bağlı)</label><textarea id="it-note" rows="3" class="plain"></textarea></div>
+    <div><label class="f" for="it-list">Liste</label><select id="it-list"></select></div>
+    <div class="two">
+      <div><label class="f" for="it-created">Eklenme tarihi</label><input id="it-created" type="date"></div>
+      <div><label class="f" for="it-done" id="it-done-l">Tamamlanma tarihi</label><input id="it-done" type="date"></div>
+    </div>
+    <div id="it-due-wrap"><label class="f" for="it-due">Son tarih (isteğe bağlı)</label><input id="it-due" type="date"></div>
+    <p class="small muted" style="margin:0">Tamamlanma tarihini boş bırakırsan madde açık kalır.</p>
+  </div>
+</section>
+
+<section id="scr-stats" class="hidden">
+  <div class="top row"><button class="btn ghost" id="st-back">← Listeler</button><span class="title">Özet</span></div>
+  <div class="stack" style="margin-top:12px">
+    <select id="st-period" aria-label="Dönem">
+      <option value="month">Bu ay</option><option value="lastmonth">Geçen ay</option><option value="3m">Son 3 ay</option>
+      <option value="year" selected>Bu yıl</option><option value="lastyear">Geçen yıl</option><option value="all">Tüm zamanlar</option><option value="custom">Tarih aralığı seç…</option>
+    </select>
+    <div id="st-custom" class="two hidden"><input type="date" id="st-from" aria-label="Başlangıç"><input type="date" id="st-to" aria-label="Bitiş"></div>
+    <div id="st-box" class="stack"></div>
   </div>
 </section>
 
@@ -340,17 +409,21 @@ async function afterUnlock() {
 }
 
 async function loadEntries() {
-  ENTRIES = new Map();
+  ENTRIES = new Map(); ITEMS = new Map(); LISTS = new Map();
   for (const r of await dbAll('entries')) {
     if (r.deleted) continue;
-    try { ENTRIES.set(r.id, await decJSON(r)); } catch (e) { console.warn('çözülemedi', r.id); }
+    try {
+      const o = await decJSON(r);
+      if (o.kind === 'item') ITEMS.set(o.id, o); else if (o.kind === 'list') LISTS.set(o.id, o); else ENTRIES.set(r.id, o);
+    } catch (e) { console.warn('çözülemedi', r.id); }
   }
 }
 
 function lock() {
   if (!KEY) return;
   if (screen === 'edit') saveDraftNow();
-  KEY = null; ENTRIES = new Map(); editing = null; current = null;
+  KEY = null; ENTRIES = new Map(); ITEMS = new Map(); LISTS = new Map(); editing = null; current = null; curList = null; curItem = null;
+  $('#lists-box').replaceChildren(); $('#lv-open').replaceChildren(); $('#lv-done').replaceChildren(); $('#st-box').replaceChildren();
   for (const u of photoURLs.values()) URL.revokeObjectURL(u); photoURLs = new Map();
   $('#list').replaceChildren(); $('#v-text').textContent = ''; $('#text').value = '';
   showLock();
@@ -373,7 +446,7 @@ function sorted() { return [...ENTRIES.values()].sort((a, b) => b.date.localeCom
 function renderList() {
   const q = $('#search').value.trim().toLocaleLowerCase('tr');
   const list = $('#list'); list.replaceChildren();
-  const items = sorted().filter(e => !q || (e.text + ' ' + (e.place?.label || '')).toLocaleLowerCase('tr').includes(q));
+  const items = sorted().filter(e => !q || ((e.text || '') + ' ' + (e.place?.label || '')).toLocaleLowerCase('tr').includes(q));
   if (!items.length) { list.append(el('div', { className: 'empty', textContent: q ? 'Bulunamadı.' : 'Henüz yazı yok. İlk sayfayı aç.' })); return; }
   let month = '';
   for (const e of items) {
@@ -494,7 +567,7 @@ async function persistEntry(entry) {
   ENTRIES.set(entry.id, entry); updateStatus();
   if (tokenValid()) syncDrive().catch(() => {});
 }
-document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => { renderList(); show('list'); updateStatus(); });
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => goHome());
 $('#btn-edit').onclick = () => { const e = ENTRIES.get(current); openEditor({ id: e.id, isNew: false, date: e.date, created: e.created, text: e.text, place: e.place || null, photos: [...(e.photos || [])], added: [] }); };
 
 /* ---------- Yazma ---------- */
@@ -867,6 +940,8 @@ async function syncDrive(force = false) {
     for (const pid of used) { if (!(await dbGet('photos', pid)) && remote.has(pid + '.json')) await dbPut('photos', { ...(await driveGet(remote.get(pid + '.json').id)), synced: true }); }
     await setSettings({ lastSync: Date.now(), driveLinked: true });
     if (changed && screen === 'list') renderList();
+    if (changed && screen === 'lists') showLists();
+    if (changed && screen === 'listview') renderListView();
   } finally { syncing = false; updateStatus(); }
 }
 setInterval(() => { if (tokenValid()) syncDrive().catch(() => {}); }, 5 * 60e3);
@@ -883,6 +958,189 @@ $('#btn-from-drive').onclick = async () => {
     showLock("Drive'daki günlük bulundu. Şifrenle aç, yazılar inecek.");
   } catch (e) { toast(e.message || 'Olmadı.'); }
 };
+
+/* ============================================================
+   LİSTELER: yapılacaklar, kitaplar, izlenecekler, gezilecek yerler
+   Her madde de yazılar gibi şifreli bir kayıt olarak saklanır ve aynı yolla yedeklenir.
+   ============================================================ */
+let LISTS = new Map(), ITEMS = new Map(), curList = null, curItem = null, lastTab = 'diary';
+const DEFAULT_LISTS = [
+  { id: 'L-todo', name: 'Yapılacaklar', icon: '✅', verb: 'tamamlandı', order: 0, due: true },
+  { id: 'L-books', name: 'Okunacak kitaplar', icon: '📚', verb: 'okundu', order: 1 },
+  { id: 'L-watch', name: 'İzlenecekler', icon: '🎬', verb: 'izlendi', order: 2 },
+  { id: 'L-travel', name: 'Gezilecek yerler', icon: '🧭', verb: 'gidildi', order: 3 },
+];
+function allLists() {
+  const out = DEFAULT_LISTS.map(d => LISTS.has(d.id) ? { ...d, ...LISTS.get(d.id) } : d);
+  for (const l of LISTS.values()) if (!DEFAULT_LISTS.some(d => d.id === l.id)) out.push(l);
+  return out.filter(l => !l.hidden).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || (a.created || 0) - (b.created || 0));
+}
+const listById = id => allLists().find(l => l.id === id) || { id, name: 'Liste', icon: '📝', verb: 'tamamlandı' };
+const pad2 = n => String(n).padStart(2, '0');
+const dayStr = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const fromDay = (s, keep) => !s ? null : (keep && dayStr(keep) === s ? keep : new Date(s + 'T12:00').getTime());
+const fmtDay = ms => new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: new Date(ms).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+const daysBetween = (a, b) => Math.max(0, Math.round((b - a) / 864e5));
+
+async function saveRec(o) {
+  o.updated = Date.now();
+  await dbPut('entries', { id: o.id, updated: o.updated, deleted: false, ...(await encJSON(o)), synced: false });
+  (o.kind === 'item' ? ITEMS : LISTS).set(o.id, o);
+  updateStatus(); if (tokenValid()) syncDrive().catch(() => {});
+}
+async function delRec(id) {
+  await dbPut('entries', { id, updated: Date.now(), deleted: true, synced: false });
+  ITEMS.delete(id); LISTS.delete(id);
+  updateStatus(); if (tokenValid()) syncDrive().catch(() => {});
+}
+
+function goHome() { if (lastTab === 'lists') showLists(); else { renderList(); show('list'); updateStatus(); } }
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { lastTab = b.dataset.tab; goHome(); });
+$('#btn-settings2').onclick = () => $('#btn-settings').click();
+$('#btn-lock2').onclick = lock;
+
+/* Liste kartları */
+function showLists() {
+  const box = $('#lists-box'); box.replaceChildren();
+  for (const l of allLists()) {
+    const its = [...ITEMS.values()].filter(i => i.list === l.id);
+    const open = its.filter(i => !i.done).length, done = its.length - open;
+    const c = el('button', { className: 'lcard' }, el('span', { className: 'ic', textContent: l.icon || '📝' }),
+      el('span', { style: 'flex:1' }, el('div', { className: 'nm', textContent: l.name }), el('div', { className: 'ct', textContent: `${open} açık · ${done} ${l.verb || 'tamamlandı'}` })),
+      el('span', { className: 'muted', textContent: '›' }));
+    c.onclick = () => openList(l.id);
+    box.append(c);
+  }
+  show('lists');
+}
+$('#btn-newlist').onclick = async () => {
+  const name = (prompt('Yeni listenin adı:', '') || '').trim(); if (!name) return;
+  const verb = (prompt('Bir madde bitince ne denilsin? (ör. tamamlandı, okundu, dinlendi)', 'tamamlandı') || 'tamamlandı').trim();
+  await saveRec({ id: 'L-' + uid(), kind: 'list', name, icon: '📝', verb, order: 50, created: Date.now() });
+  showLists();
+};
+
+/* Tek liste */
+function itemRow(i, l) {
+  const cb = el('input', { type: 'checkbox', checked: !!i.done, ariaLabel: 'Tamamlandı' });
+  cb.onchange = async () => { i.done = cb.checked ? Date.now() : null; await saveRec(i); renderListView(); };
+  const meta = [];
+  if (i.done) meta.push(`${l.verb || 'tamamlandı'} ${fmtDay(i.done)} · ${daysBetween(i.created, i.done)} günde`);
+  else {
+    meta.push('eklendi ' + fmtDay(i.created));
+    if (i.due) meta.push('son tarih ' + fmtDay(new Date(i.due + 'T12:00').getTime()));
+  }
+  const late = !i.done && i.due && i.due < dayStr(Date.now());
+  const tx = el('div', { className: 'tx' }, el('div', { className: 'tt', textContent: i.title }),
+    el('div', { className: 'mt' + (late ? ' late' : ''), textContent: meta.join(' · ') + (i.note ? '  ·  📝' : '') }));
+  tx.onclick = () => openItem(i.id);
+  return el('div', { className: 'irow' + (i.done ? ' done' : '') }, cb, tx);
+}
+function renderListView() {
+  const l = listById(curList);
+  $('#lv-title').textContent = `${l.icon || '📝'} ${l.name}`;
+  const its = [...ITEMS.values()].filter(i => i.list === curList);
+  const open = its.filter(i => !i.done).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.created - b.created);
+  const done = its.filter(i => i.done).sort((a, b) => b.done - a.done);
+  const ob = $('#lv-open'); ob.replaceChildren(...open.map(i => itemRow(i, l)));
+  if (!open.length) ob.append(el('p', { className: 'muted small', textContent: 'Açık madde yok.' }));
+  $('#lv-done').replaceChildren(...done.map(i => itemRow(i, l)));
+  $('#lv-donesum').textContent = `${l.verb ? l.verb[0].toLocaleUpperCase('tr') + l.verb.slice(1) : 'Tamamlanan'}: ${done.length}`;
+  $('#lv-donewrap').classList.toggle('hidden', !done.length);
+}
+function openList(id) { curList = id; $('#lv-input').value = ''; renderListView(); show('listview'); }
+$('#lv-back').onclick = showLists;
+$('#lv-add').onsubmit = async ev => {
+  ev.preventDefault();
+  const t = $('#lv-input').value.trim(); if (!t) return;
+  $('#lv-input').value = '';
+  await saveRec({ id: 'i-' + uid(), kind: 'item', list: curList, title: t, note: '', created: Date.now(), done: null, due: null });
+  renderListView(); $('#lv-input').focus();
+};
+$('#lv-edit').onclick = async () => {
+  const l = listById(curList);
+  const name = prompt('Listenin adı (silmek için boş bırak):', l.name);
+  if (name === null) return;
+  const base = LISTS.get(l.id) || { id: l.id, kind: 'list', created: Date.now(), order: l.order, icon: l.icon, verb: l.verb };
+  if (!name.trim()) {
+    const n = [...ITEMS.values()].filter(i => i.list === l.id).length;
+    if (!confirm(n ? `"${l.name}" listesi ve içindeki ${n} madde silinsin mi? Geri alınamaz.` : `"${l.name}" listesi silinsin mi?`)) return;
+    for (const i of [...ITEMS.values()].filter(i => i.list === l.id)) await delRec(i.id);
+    await saveRec({ ...base, kind: 'list', name: l.name, hidden: true });
+    return showLists();
+  }
+  const verb = (prompt('Bir madde bitince ne denilsin?', l.verb || 'tamamlandı') || l.verb || 'tamamlandı').trim();
+  await saveRec({ ...base, kind: 'list', name: name.trim(), verb, hidden: false });
+  renderListView();
+};
+
+/* Madde düzenleme */
+function openItem(id) {
+  const i = ITEMS.get(id); if (!i) return; curItem = id;
+  $('#it-title').value = i.title; $('#it-note').value = i.note || '';
+  const sel = $('#it-list'); sel.replaceChildren(...allLists().map(l => el('option', { value: l.id, textContent: `${l.icon || '📝'} ${l.name}`, selected: l.id === i.list })));
+  $('#it-created').value = dayStr(i.created); $('#it-done').value = i.done ? dayStr(i.done) : '';
+  $('#it-due').value = i.due || '';
+  const l = listById(i.list);
+  $('#it-done-l').textContent = `${l.verb ? l.verb[0].toLocaleUpperCase('tr') + l.verb.slice(1) : 'Tamamlandı'} tarihi`;
+  $('#it-due-wrap').classList.toggle('hidden', !l.due && !i.due);
+  show('item');
+}
+$('#it-cancel').onclick = () => { curItem = null; renderListView(); show('listview'); };
+$('#it-save').onclick = async () => {
+  const i = ITEMS.get(curItem); if (!i) return;
+  const t = $('#it-title').value.trim(); if (!t) return toast('Madde boş olamaz.');
+  const created = fromDay($('#it-created').value, i.created) || i.created;
+  let done = fromDay($('#it-done').value, i.done);
+  if (done && done < created) return toast('Tamamlanma tarihi, eklenme tarihinden önce olamaz.');
+  Object.assign(i, { title: t, note: $('#it-note').value.trim(), list: $('#it-list').value, created, done: done || null, due: $('#it-due').value || null });
+  await saveRec(i); curList = i.list; curItem = null; renderListView(); show('listview'); toast('Kaydedildi.');
+};
+$('#it-del').onclick = async () => {
+  if (!curItem || !confirm('Bu madde silinsin mi?')) return;
+  await delRec(curItem); curItem = null; renderListView(); show('listview'); toast('Silindi.');
+};
+
+/* Özet: seçilen dönemde ne eklendi, ne bitti */
+function periodRange(p) {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  switch (p) {
+    case 'month': return [new Date(y, m, 1), new Date(y, m + 1, 1)];
+    case 'lastmonth': return [new Date(y, m - 1, 1), new Date(y, m, 1)];
+    case '3m': return [new Date(y, m - 2, 1), new Date(y, m + 1, 1)];
+    case 'year': return [new Date(y, 0, 1), new Date(y + 1, 0, 1)];
+    case 'lastyear': return [new Date(y - 1, 0, 1), new Date(y, 0, 1)];
+    case 'custom': {
+      const f = $('#st-from').value, t = $('#st-to').value;
+      const a = f ? new Date(f + 'T00:00') : new Date(1970, 0, 1), b = t ? new Date(t + 'T00:00') : new Date(y + 50, 0, 1);
+      if (t) b.setDate(b.getDate() + 1);
+      return [a, b];
+    }
+    default: return [new Date(1970, 0, 1), new Date(y + 50, 0, 1)];
+  }
+}
+function renderStats() {
+  const p = $('#st-period').value; $('#st-custom').classList.toggle('hidden', p !== 'custom');
+  const [a, b] = periodRange(p), A = a.getTime(), B = b.getTime(), inR = t => t && t >= A && t < B;
+  const box = $('#st-box'); box.replaceChildren();
+  for (const l of allLists()) {
+    const its = [...ITEMS.values()].filter(i => i.list === l.id);
+    const done = its.filter(i => inR(i.done)).sort((x, y) => x.done - y.done);
+    const added = its.filter(i => inR(i.created)).length;
+    const open = its.filter(i => !i.done).length;
+    const avg = done.length ? Math.round(done.reduce((s, i) => s + daysBetween(i.created, i.done), 0) / done.length) : null;
+    const card = el('div', { className: 'card' },
+      el('div', { className: 'row' }, el('span', { textContent: `${l.icon || '📝'} ${l.name}`, style: 'font-family:var(--serif);font-size:17px' })),
+      el('div', { className: 'big', style: 'margin-top:6px', textContent: `${done.length} ${l.verb || 'tamamlandı'}` }),
+      el('div', { className: 'small muted', textContent: `${added} yeni eklendi · şu an ${open} açık` + (avg !== null ? ` · ortalama ${avg} günde` : '') }));
+    if (done.length) card.append(el('ul', { className: 'stl' }, ...done.map(i => el('li', {}, el('span', { className: 'd', textContent: fmtDay(i.done) }), el('span', { textContent: i.title })))));
+    box.append(card);
+  }
+  if (!allLists().length) box.append(el('p', { className: 'muted', textContent: 'Henüz liste yok.' }));
+}
+$('#btn-stats').onclick = () => { renderStats(); show('stats'); };
+$('#st-back').onclick = showLists;
+['#st-period', '#st-from', '#st-to'].forEach(s => $(s).addEventListener('change', renderStats));
 
 boot().catch(e => { document.body.textContent = 'Başlatılamadı: ' + e.message; });
 </script>
