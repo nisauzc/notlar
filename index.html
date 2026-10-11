@@ -248,6 +248,14 @@ input[type=date]{width:100%;padding:11px 12px;border:1px solid var(--line);borde
   <div class="top row"><button class="btn ghost" id="lv-back">← Listeler</button><span class="spacer"></span><button class="btn ghost" id="lv-edit">Listeyi düzenle</button></div>
   <h1 id="lv-title"></h1>
   <form id="lv-add" class="row" style="flex-wrap:nowrap;margin:8px 0 14px"><input id="lv-input" type="text" placeholder="Yeni madde ekle…" autocomplete="off" style="flex:1"><button class="btn primary" type="submit">Ekle</button></form>
+  <details class="donewrap" id="lv-bulkwrap" style="margin:-6px 0 12px"><summary>Toplu ekle (birden çok madde)</summary>
+    <div class="stack card" style="margin-top:8px">
+      <p class="small muted" style="margin:0">Her satır bir madde olur. Bitirdiklerinin başına <b>x</b> koy (ör. <i>x Jane Eyre</i>).</p>
+      <textarea id="lv-bulk" rows="7" class="plain" placeholder="Jane Eyre&#10;x Beni Bırakma&#10;Dune 2"></textarea>
+      <div><label class="f" for="lv-bulkdate">Eklenme tarihi</label><input id="lv-bulkdate" type="date"></div>
+      <button class="btn primary" id="lv-bulkbtn" type="button">Hepsini ekle</button>
+    </div>
+  </details>
   <div id="lv-open"></div>
   <details class="donewrap" id="lv-donewrap"><summary id="lv-donesum"></summary><div id="lv-done"></div></details>
 </section>
@@ -1048,7 +1056,20 @@ function renderListView() {
   $('#lv-donesum').textContent = `${l.verb ? l.verb[0].toLocaleUpperCase('tr') + l.verb.slice(1) : 'Tamamlanan'}: ${done.length}`;
   $('#lv-donewrap').classList.toggle('hidden', !done.length);
 }
-function openList(id) { curList = id; $('#lv-input').value = ''; renderListView(); show('listview'); }
+function openList(id) { curList = id; $('#lv-input').value = ''; $('#lv-bulk').value = ''; $('#lv-bulkdate').value = dayStr(Date.now()); $('#lv-bulkwrap').open = false; renderListView(); show('listview'); }
+$('#lv-bulkbtn').onclick = async () => {
+  const lines = $('#lv-bulk').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (!lines.length) return toast('Önce maddeleri yaz.');
+  const when = fromDay($('#lv-bulkdate').value) || Date.now();
+  let n = 0;
+  for (const line of lines) {
+    const m = /^(?:\[x\]|x|✓|✔)\s+(.+)$/i.exec(line);
+    const title = (m ? m[1] : line).replace(/^[-•*]\s+/, '').trim(); if (!title) continue;
+    await saveRec({ id: 'i-' + uid(), kind: 'item', list: curList, title, note: '', created: when + n, done: m ? when + n : null, due: null });
+    n++;
+  }
+  $('#lv-bulk').value = ''; $('#lv-bulkwrap').open = false; renderListView(); toast(n + ' madde eklendi.');
+};
 $('#lv-back').onclick = showLists;
 $('#lv-add').onsubmit = async ev => {
   ev.preventDefault();

@@ -1,5 +1,5 @@
 // Defter — çevrimdışı çalışma için önbellek. Uygulamayı güncellediğinde CACHE sürümünü artır.
-const CACHE = 'defter-v6';
+const CACHE = 'defter-v7';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './heic-to.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
