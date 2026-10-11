@@ -391,15 +391,61 @@ function renderList() {
 }
 
 /* ---------- Okuma ---------- */
-function photoImg(u) {
+const photoInfo = new Map();  // id -> { type, size, heic }
+function photoImg(u, id) {
   const img = el('img', { src: u, alt: '' });
-  img.onerror = () => img.replaceWith(el('p', { className: 'small muted', textContent: '(Bu fotoğrafın biçimi bu cihazda gösterilemiyor ama kayıtlı ve yedekte duruyor.)' }));
+  img.onerror = () => {
+    const i = photoInfo.get(id) || {};
+    const what = i.size === 0 ? 'dosya boş' : `${i.heic ? 'HEIC' : (i.type || 'bilinmeyen biçim')}, ${((i.size || 0) / 1048576).toFixed(1)} MB`;
+    img.replaceWith(el('p', { className: 'small muted', textContent: `(Bu fotoğraf bu cihazda gösterilemiyor: ${what}. Kayıtlı ve yedekte duruyor.)` }));
+  };
   return img;
+}
+/* HEIC (telefonların "yüksek verimli fotoğraf" biçimi) çözücü: sadece gerektiğinde yüklenir */
+let heicLoading = null;
+function loadHeic() {
+  if (window.HeicTo) return Promise.resolve(window.HeicTo);
+  if (!heicLoading) heicLoading = new Promise((res, rej) => {
+    const sc = el('script', { src: 'heic-to.js' });
+    sc.onload = () => window.HeicTo ? res(window.HeicTo) : rej(new Error('heic'));
+    sc.onerror = () => { heicLoading = null; rej(new Error('HEIC çözücü yüklenemedi')); };
+    document.head.append(sc);
+  });
+  return heicLoading;
+}
+function looksHeic(b) {
+  if (!b || b.length < 12) return false;
+  const box = String.fromCharCode(b[4], b[5], b[6], b[7]), brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+  return box === 'ftyp' && /^(heic|heix|hevc|hevx|heim|heis|hevm|hevs|mif1|msf1)$/.test(brand);
+}
+async function heicToJpeg(blobOrBytes) {
+  const bytes = blobOrBytes instanceof Uint8Array ? blobOrBytes : new Uint8Array(await blobOrBytes.arrayBuffer());
+  if (!looksHeic(bytes)) throw new Error('not-heic');
+  const H = await loadHeic();
+  const conv = typeof H === 'function' ? H : H.heicTo;
+  const jpg = await conv({ blob: new Blob([bytes], { type: 'image/heic' }), type: 'image/jpeg', quality: 0.92 });
+  return compressImage(jpg);
+}
+/* Eskiden orijinal olarak saklanmış (gösterilemeyen) fotoğrafları JPEG'e çevir. Başarılıysa yeni kimlik döner. */
+async function repairPhoto(pid) {
+  const r = await dbGet('photos', pid);
+  if (!r || !r.type || r.type === 'image/jpeg') return pid;
+  try {
+    const bytes = await decBytes(r);
+    let jpg;
+    try { jpg = await heicToJpeg(bytes); } catch { jpg = await compressImage(new Blob([bytes], { type: r.type })); }
+    const nid = 'p-' + uid();
+    await dbPut('photos', { id: nid, ...(await encBytes(jpg)), synced: false });
+    await dbDel('photos', pid);
+    return nid;
+  } catch { return pid; }
 }
 async function photoURL(id) {
   if (photoURLs.has(id)) return photoURLs.get(id);
   const r = await dbGet('photos', id); if (!r) return null;
-  const u = URL.createObjectURL(new Blob([await decBytes(r)], { type: r.type || 'image/jpeg' }));
+  const bytes = await decBytes(r);
+  photoInfo.set(id, { type: r.type || 'image/jpeg', size: bytes.length, heic: looksHeic(bytes) });
+  const u = URL.createObjectURL(new Blob([bytes], { type: r.type || 'image/jpeg' }));
   photoURLs.set(id, u); return u;
 }
 function placeChip(p, onRemove) {
@@ -415,7 +461,14 @@ async function openView(id) {
   renderBody(e);
   const ph = $('#v-photos'); ph.replaceChildren();
   show('view');
-  for (const pid of e.photos || []) { const u = await photoURL(pid); if (u) ph.append(photoImg(u)); else ph.append(el('p', { className: 'small muted', textContent: '(fotoğraf bu cihazda yok — yedekten gelecek)' })); }
+  // Gösterilemeyen eski fotoğrafları bir kereliğine onar
+  if (e.photos?.length) {
+    let changed = false; const fixed = [];
+    for (const pid of e.photos) { const r = await dbGet('photos', pid); if (r?.type && r.type !== 'image/jpeg') { ph.replaceChildren(el('p', { className: 'small muted', textContent: 'Fotoğraflar hazırlanıyor…' })); } const nid = await repairPhoto(pid); if (nid !== pid) changed = true; fixed.push(nid); }
+    if (changed && current === id) { e.photos = fixed; await persistEntry(e); }
+    ph.replaceChildren();
+  }
+  for (const pid of e.photos || []) { const u = await photoURL(pid); if (u) ph.append(photoImg(u, pid)); else ph.append(el('p', { className: 'small muted', textContent: '(fotoğraf bu cihazda yok — yedekten gelecek)' })); }
 }
 /* Okuma ekranında yazıyı satır satır çiz: ☐/☑ satırları dokunulabilir kutucuk olur */
 function renderBody(e) {
@@ -519,7 +572,7 @@ async function renderThumbs() {
     const u = await photoURL(pid);
     const x = el('button', { textContent: '×', title: 'Fotoğrafı çıkar' });
     x.onclick = () => { editing.photos = editing.photos.filter(p => p !== pid); renderThumbs(); saveDraftSoon(); };
-    box.append(el('div', { className: 'thumb' }, u ? photoImg(u) : null, x));
+    box.append(el('div', { className: 'thumb' }, u ? photoImg(u, pid) : null, x));
   }
 }
 
@@ -549,8 +602,10 @@ $('#file-photo').onchange = async ev => {
   let ok = 0;
   for (const f of files) {
     let bytes, type = 'image/jpeg';
+    if (!f.size) { toast(`"${f.name}" boş geldi. Fotoğraf bulutta olabilir; önce telefona indirip tekrar dene.`, 6000); continue; }
     try { bytes = await compressImage(f); }
-    catch (e) {
+    catch (e) { try { bytes = await heicToJpeg(f); } catch {} }
+    if (!bytes) {
       // Küçültülemeyen biçim (ör. HEIC) ya da çok büyük fotoğraf: orijinalini sakla, kaybolmasın
       if (f.size > 25 * 1048576) { toast(`"${f.name}" çok büyük (${(f.size / 1048576).toFixed(0)} MB), eklenemedi.`, 5000); continue; }
       try { bytes = new Uint8Array(await f.arrayBuffer()); type = f.type || 'application/octet-stream'; }
